@@ -1,0 +1,63 @@
+name: Run Python Script
+
+on:
+  workflow_dispatch:   # chạy tay
+    inputs:
+      test_domain:
+        description: 'Domain to test with playwright'
+        default: 'example.com'
+      proxy_server:
+        description: 'Proxy server (ip:port)'
+        required: false
+      time_runner:
+        description: 'Limited running time'
+        required: true
+        default: '3600'
+
+jobs:
+  run-script:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ secrets.REPO }}
+          token: ${{ secrets.ACCESS_TOKEN }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install dependencies
+        run: |
+          python3 -m pip install --upgrade pip
+          pip install -r requirements.txt
+          python3 -m playwright install chromium
+
+      - name: Install cloudflared
+        run: |
+          curl -L https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -o cloudflared
+          chmod +x cloudflared
+          sudo mv cloudflared /usr/local/bin/
+
+      - name: Run script
+        run: | 	
+          cloudflared tunnel --url http://localhost:8080 2>&1 &
+          python3 run.py
+        env:
+          PYTHONUNBUFFERED: "1"
+          PROXY_SERVER: ${{ github.event.inputs.proxy_server }}
+          TIME_RUNNER: ${{ github.event.inputs.time_runner }}
+          WEB_PASSWORD: ${{ secrets.WEB_PASSWORD }}
+          TEST_DOMAIN: ${{ github.event.inputs.test_domain }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
